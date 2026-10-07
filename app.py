@@ -226,11 +226,35 @@ def scrape_history_month(year, month):
         return cached["rows"]
 
     url = HISTORY_BASE_URL.format(month=MONTH_NAMES[month - 1], year=year)
-    resp = requests.get(url, timeout=REQUEST_TIMEOUT, headers={"User-Agent": USER_AGENT})
+    resp = requests.get(
+        url,
+        timeout=REQUEST_TIMEOUT,
+        headers={
+            # uaegoldprice.com appears to block/challenge requests with a
+            # self-identifying bot User-Agent (unlike dubaicityofgold.com),
+            # so this scraper uses a realistic browser UA instead.
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
     resp.raise_for_status()
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    table = soup.find("table")  # first table on the page is the AED section
+
+    # Find the table whose header row mentions "22K" and "Date" (robust to extra
+    # tables elsewhere on the page) rather than assuming it's the first <table>.
+    table = None
+    for t in soup.find_all("table"):
+        header_text = t.get_text(" ", strip=True)
+        if "22K" in header_text and "Date" in header_text:
+            table = t
+            break
+    if table is None:
+        table = soup.find("table")  # last-resort fallback
     if table is None:
         raise ValueError(f"No table found on {url}")
 
